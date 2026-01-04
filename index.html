@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Wage Pro - Thai Edition</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyByv5JyDjRGQVgo3MZe4QhIXS7TPePu50w&libraries=places"></script>
+
+    <style>
+        :root { --p: #4361ee; --s: #2ecc71; --d: #e74c3c; --bg: #f4f7fe; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding-bottom: 120px; }
+        .container { padding: 15px; }
+        .card { background: white; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        #map { height: 280px; border-radius: 15px; border: 1px solid #ddd; margin-top: 10px; background: #eee; }
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 15px; }
+        .btn-p { background: var(--p); color: white; }
+        .btn-s { background: var(--s); color: white; }
+        .btn-d { background: var(--d); color: white; }
+        .search-box { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ddd; margin-top: 8px; box-sizing: border-box; }
+        #setup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); z-index: 5000; display: none; overflow-y: auto; }
+        #ad-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 6000; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        .log-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div id="setup-overlay">
+    <div class="container">
+        <div class="card">
+            <h2 style="color:var(--p); margin-top:0;">⚙️ အလုပ်ရုံတည်နေရာသတ်မှတ်ပါ</h2>
+            <button class="btn" style="background:#e8f0fe; color:var(--p);" onclick="getCurrentLocation()">🎯 လက်ရှိနေရာကို အသုံးပြုမည်</button>
+            <input id="pac-input" class="search-box" type="text" placeholder="နေရာအမည်ရိုက်ရှာပါ">
+            <div id="map"></div>
+            
+            <label style="display:block; margin-top:20px;">💰 တစ်နေ့စား လုပ်ခ (Baht)</label>
+            <input type="number" id="daily-rate" class="search-box" placeholder="ဥပမာ- 350">
+            
+            <label style="display:block; margin-top:15px;">⏱️ OT တစ်နာရီနှုန်း (Baht)</label>
+            <input type="number" id="ot-rate" class="search-box" placeholder="ဥပမာ- 50">
+            
+            <button class="btn btn-p" onclick="finishSetup()">သိမ်းဆည်းမည်</button>
+        </div>
+    </div>
+</div>
+
+<div id="ad-overlay">
+    <div style="padding:15px; text-align:center;">ကြော်ငြာပြသနေသည်... (<span id="countdown">5</span>)s</div>
+    <iframe id="ad-frame" style="width:100%; height:80%; border:none;" src="https://www.effectivegatecpm.com/ue0d3gerb?key=aab2b27aee8d50f9a61c7fb136dd54c7"></iframe>
+</div>
+
+<div class="container">
+    <div class="card">
+        <h3>💰 နေ့စဉ်မှတ်တမ်း (Baht)</h3>
+        <div style="display:flex; gap:10px;">
+            <div style="flex:1;"><label>တက်ချိန်</label><input type="time" id="time-in" class="search-box"></div>
+            <div style="flex:1;"><label>ဆင်းချိန်</label><input type="time" id="time-out" class="search-box"></div>
+        </div>
+        <button class="btn btn-s" onclick="calculateAndSave()">မှတ်တမ်းသိမ်းမည်</button>
+    </div>
+
+    <div class="card">
+        <h3>📊 မှတ်တမ်း (Baht)</h3>
+        <div id="log-list"></div>
+        <hr>
+        <h4 id="total-wage" style="font-size: 20px; color: var(--p);">စုစုပေါင်း: 0 ฿</h4>
+        <button class="btn btn-d" style="background:#888;" onclick="clearLogs()">အားလုံးဖျက်မည်</button>
+    </div>
+
+    <button class="btn btn-p" onclick="startAdRedirect()">More App</button>
+</div>
+
+<div style="position:fixed; bottom:0; width:100%; height:90px; background:#eee; text-align:center;">
+    <script>atOptions = {'key' : 'd5951856266fe1332c19ba818b040cb3', 'format' : 'iframe', 'height' : 90, 'width' : 728, 'params' : {}};</script>
+    <script src="https://www.highperformanceformat.com/d5951856266fe1332c19ba818b040cb3/invoke.js"></script>
+</div>
+
+<script>
+    // Firebase Config
+    const firebaseConfig = {
+        apiKey: "AIzaSyDIjR647lFhyE5mX8BfbPWQ64KAqGZeLUE",
+        authDomain: "smart-note-66b56.firebaseapp.com",
+        projectId: "smart-note-66b56",
+        storageBucket: "smart-note-66b56.firebasestorage.app",
+        messagingSenderId: "197796134024",
+        appId: "1:197796134024:web:c8c74f56ef75bde398333d"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let map, marker, autocomplete;
+    let selectedPos = { lat: 13.7563, lng: 100.5018 };
+
+    window.onload = function() {
+        if(!localStorage.getItem('setupDone')) {
+            document.getElementById('setup-overlay').style.display = 'block';
+            setTimeout(initMap, 500); 
+        } else { loadLogs(); }
+    }
+
+    function initMap() {
+        try {
+            map = new google.maps.Map(document.getElementById("map"), { center: selectedPos, zoom: 14, mapTypeControl: false });
+            marker = new google.maps.Marker({ position: selectedPos, map: map, draggable: true });
+            
+            const input = document.getElementById("pac-input");
+            autocomplete = new google.maps.places.Autocomplete(input);
+            autocomplete.addListener("place_changed", () => {
+                const place = autocomplete.getPlace();
+                if (place.geometry) {
+                    map.setCenter(place.geometry.location);
+                    marker.setPosition(place.geometry.location);
+                    selectedPos = place.geometry.location.toJSON();
+                }
+            });
+            marker.addListener('dragend', () => { selectedPos = marker.getPosition().toJSON(); });
+        } catch (e) { alert("Map API error: API Key သို့မဟုတ် Billing ကို စစ်ဆေးပါ"); }
+    }
+
+    function getCurrentLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((p) => {
+                selectedPos = { lat: p.coords.latitude, lng: p.coords.longitude };
+                map.setCenter(selectedPos);
+                marker.setPosition(selectedPos);
+                map.setZoom(17);
+            });
+        }
+    }
+
+    function finishSetup() {
+        const dRate = document.getElementById('daily-rate').value;
+        const oRate = document.getElementById('ot-rate').value;
+        if(!dRate || !oRate) return alert("နှုန်းထားများ ဖြည့်ပေးပါ");
+
+        localStorage.setItem('setupDone', 'true');
+        localStorage.setItem('dailyRate', dRate);
+        localStorage.setItem('otRate', oRate);
+        document.getElementById('setup-overlay').style.display = 'none';
+        loadLogs();
+    }
+
+    async function calculateAndSave() {
+        const tIn = document.getElementById('time-in').value;
+        const tOut = document.getElementById('time-out').value;
+        if(!tIn || !tOut) return alert("အချိန်ဖြည့်ပါ");
+
+        const start = new Date("2024-01-01 " + tIn);
+        const end = new Date("2024-01-01 " + tOut);
+        let diff = (end - start) / (1000 * 60 * 60);
+        if (diff < 0) diff += 24;
+
+        const dRate = parseFloat(localStorage.getItem('dailyRate'));
+        const oRate = parseFloat(localStorage.getItem('otRate'));
+        let wage = dRate;
+        if(diff > 8) wage += ((diff - 8) * oRate);
+
+        await db.collection("wages").add({ date: new Date().toLocaleDateString(), timeIn: tIn, timeOut: tOut, wage: Math.round(wage), ts: Date.now() });
+        loadLogs();
+        alert("တွက်ချက်သိမ်းဆည်းပြီးပါပြီ။");
+    }
+
+    async function loadLogs() {
+        const snap = await db.collection("wages").orderBy("ts", "desc").limit(15).get();
+        let html = ''; let total = 0;
+        snap.forEach(doc => {
+            const d = doc.data(); total += d.wage;
+            html += `<div class="log-item">
+                <span><b>${d.date}</b><br><small>${d.timeIn} - ${d.timeOut}</small></span>
+                <span>${d.wage.toLocaleString()} ฿ <button onclick="deleteDoc('${doc.id}')" style="border:none; background:none; color:red; margin-left:10px;">✖</button></span>
+            </div>`;
+        });
+        document.getElementById('log-list').innerHTML = html || '<p style="text-align:center; color:#999;">မှတ်တမ်းမရှိပါ။</p>';
+        document.getElementById('total-wage').innerText = `စုစုပေါင်း: ${total.toLocaleString()} ฿`;
+    }
+
+    async function deleteDoc(id) {
+        if(confirm("ဖျက်မှာလား?")) { await db.collection("wages").doc(id).delete(); loadLogs(); }
+    }
+
+    async function clearLogs() {
+        if(confirm("အားလုံးဖျက်မှာလား?")) {
+            const snap = await db.collection("wages").get();
+            const batch = db.batch(); snap.forEach(doc => batch.delete(doc.ref));
+            await batch.commit(); loadLogs();
+        }
+    }
+
+    function startAdRedirect() {
+        document.getElementById('ad-overlay').style.display = 'flex';
+        let count = 5;
+        const timer = setInterval(() => {
+            count--;
+            document.getElementById('countdown').innerText = count;
+            if(count <= 0) {
+                clearInterval(timer);
+                window.location.href = "https://daily-y-app.github.io/Apk-downlode/";
+            }
+        }, 1000);
+    }
+</script>
+</body>
+</html>
